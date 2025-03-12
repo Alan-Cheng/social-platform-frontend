@@ -25,8 +25,8 @@
             <div class="comment-content">
               <p>{{ comment.content }}</p>
               <p><strong>{{ comment.userName }}</strong> 回覆於: {{ comment.createdAt }}</p>
-              <button v-if="comment.userId == this.userId"
-                @click="deleteComment(post.postId, comment.commentId)" class="deleteButton">刪除您的留言</button>
+              <button v-if="comment.userId == this.userId" @click="deleteComment(post.postId, comment.commentId)"
+                class="deleteButton">刪除您的留言</button>
             </div>
           </div>
         </div>
@@ -78,6 +78,27 @@ export default {
     this.connectWebSocket();
   },
   methods: {
+    // 通用的發送請求方法
+    sendRequest(method, url, data = null) {
+      const token = sessionStorage.getItem('token');
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+
+      const config = {
+        method: method,
+        url: url,
+        headers: headers,
+        data: data,
+      };
+
+      return axios(config)
+        .then(response => response.data)
+        .catch(error => {
+          console.error(`Error during ${method} request to ${url}:`, error);
+          throw error;
+        });
+    },
+
+    // 發佈貼文
     createPost() {
       const newPost = {
         content: this.newPostContent,
@@ -85,7 +106,7 @@ export default {
         comments: [],
         createdAt: new Date().toISOString().slice(0, 19).replace('T', ' ')
       };
-      axios.post('http://localhost:8090/api/posts', newPost)
+      this.sendRequest('POST', 'http://localhost:8090/api/posts', newPost)
         .then(() => {
           this.fetchPosts();
           this.newPostContent = '';
@@ -94,6 +115,8 @@ export default {
           console.error('Error creating post:', error);
         });
     },
+
+    // 新增留言
     addComment(post) {
       const newComment = {
         content: post.newCommentContent,
@@ -101,7 +124,7 @@ export default {
         createdAt: new Date().toISOString().slice(0, 19).replace('T', ' '),
         postId: post.postId
       };
-      axios.post(`http://localhost:8090/api/posts/${post.postId}/comments`, newComment)
+      this.sendRequest('POST', `http://localhost:8090/api/posts/${post.postId}/comments`, newComment)
         .then(() => {
           this.fetchPosts();
           post.newCommentContent = '';
@@ -110,8 +133,10 @@ export default {
           console.error('Error adding comment:', error);
         });
     },
+
+    // 刪除貼文
     deletePost(postId) {
-      axios.delete(`http://localhost:8090/api/posts/${postId}`)
+      this.sendRequest('DELETE', `http://localhost:8090/api/posts/${postId}`)
         .then(() => {
           this.fetchPosts();
         })
@@ -119,8 +144,10 @@ export default {
           console.error('Error deleting post:', error);
         });
     },
+
+    // 刪除留言
     deleteComment(postId, commentId) {
-      axios.delete(`http://localhost:8090/api/posts/${postId}/comments/${commentId}`)
+      this.sendRequest('DELETE', `http://localhost:8090/api/posts/${postId}/comments/${commentId}`)
         .then(() => {
           this.fetchPosts();
         })
@@ -128,10 +155,12 @@ export default {
           console.error('Error deleting comment:', error);
         });
     },
+
+    // 取得所有貼文
     fetchPosts() {
-      axios.get('http://localhost:8090/api/posts')
-        .then(response => {
-          this.posts = response.data.reverse();
+      this.sendRequest('GET', 'http://localhost:8090/api/posts')
+        .then(data => {
+          this.posts = data.reverse();
           this.posts.forEach(post => {
             post.newCommentContent = '';
           });
@@ -140,37 +169,59 @@ export default {
           console.error('Error fetching posts:', error);
         });
     },
+
     toggleChat() {
       this.isChatCollapsed = !this.isChatCollapsed;
     },
+
     connectWebSocket() {
-      this.socket = new WebSocket('ws://localhost:8090/ws/chat');
+      const token = sessionStorage.getItem("token");
+      const url = `ws://localhost:8090/ws/chat?token=${token}`;
+      this.socket = new WebSocket(url);
+
       this.socket.onopen = () => {
-        this.socketStatus = "已進入聊天室";
+        this.socketStatus = "✅ 已進入聊天室";
         this.socketStatusColor = "green";
         this.isInputDisabled = false;
       };
 
       this.socket.onerror = (error) => {
-        console.error('WebSocket 連接錯誤:', error);
-        this.socketStatus = "聊天室連線失敗";
+        console.error("❌ WebSocket 連接錯誤:", error);
+        this.socketStatus = "⚠️ 聊天室連線失敗";
+        this.socketStatusColor = "red";
+        this.isInputDisabled = true;
+      };
+
+      this.socket.onclose = (event) => {
+        console.warn("⚠️ WebSocket 已關閉:", event.code, event.reason);
+
+        const reason = event.reason;
+
+        if (event.code === 1006) {
+          this.socketStatus = reason;
+        } else if (event.code === 1008) {
+          this.socketStatus = reason;
+        } else {
+          this.socketStatus = reason;
+        }
+
         this.socketStatusColor = "red";
         this.isInputDisabled = true;
       };
 
       this.socket.onmessage = (event) => {
         const data = JSON.parse(event.data);
-        // Add message to the messages array
-        this.messages.push({ 
-          username: data.username, 
-          message: data.message, 
-          timestamp: new Date().toLocaleTimeString()
+        this.messages.push({
+          username: data.username,
+          message: data.message,
+          timestamp: new Date().toLocaleTimeString(),
         });
         this.$nextTick(() => {
           this.$refs.messages.scrollTop = this.$refs.messages.scrollHeight;
         });
       };
     },
+
     sendMessage() {
       if (this.newMessage.trim() && this.socket.readyState === WebSocket.OPEN) {
         console.log(JSON.stringify({ username: this.userName, message: this.newMessage }));
@@ -318,60 +369,66 @@ input[type="text"] {
 }
 
 #messages {
-    border: 1px solid #ccc;
-    padding: 10px;
-    height: 300px;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    margin-bottom: 10px;
-    background-color: #fafafa; /* Adding a background color */
-    border-radius: 8px;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); /* Optional: to add some shadow */
+  border: 1px solid #ccc;
+  padding: 10px;
+  height: 300px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 10px;
+  background-color: #fafafa;
+  /* Adding a background color */
+  border-radius: 8px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  /* Optional: to add some shadow */
+}
+
+.message {
+  padding: 8px 12px;
+  margin: 5px;
+  border-radius: 8px;
+  max-width: 70%;
+  word-wrap: break-word;
+  font-size: 16px;
+  /* Make the font size uniform */
+  background-color: #ffffff;
+  /* Ensure message bubbles are readable */
+}
+
+.my-message {
+  background-color: #007bff;
+  color: white;
+  align-self: flex-end;
+  text-align: right;
+}
+
+.other-message {
+  background-color: #f1f1f1;
+  color: black;
+  align-self: flex-start;
+  text-align: left;
+}
+
+.timestamp {
+  font-size: 12px;
+  opacity: 0.7;
+  margin-top: 4px;
+  text-align: right;
+  /* Align the timestamp on the right side */
+}
+
+@media (max-width: 600px) {
+  #messages {
+    height: 200px;
   }
 
   .message {
-    padding: 8px 12px;
-    margin: 5px;
-    border-radius: 8px;
-    max-width: 70%;
-    word-wrap: break-word;
-    font-size: 16px; /* Make the font size uniform */
-    background-color: #ffffff; /* Ensure message bubbles are readable */
-  }
-
-  .my-message {
-    background-color: #007bff;
-    color: white;
-    align-self: flex-end;
-    text-align: right;
-  }
-
-  .other-message {
-    background-color: #f1f1f1;
-    color: black;
-    align-self: flex-start;
-    text-align: left;
+    font-size: 14px;
   }
 
   .timestamp {
-    font-size: 12px;
-    opacity: 0.7;
-    margin-top: 4px;
-    text-align: right; /* Align the timestamp on the right side */
+    font-size: 10px;
+    /* Adjust timestamp font size for smaller screens */
   }
-
-  @media (max-width: 600px) {
-    #messages {
-      height: 200px;
-    }
-
-    .message {
-      font-size: 14px;
-    }
-
-    .timestamp {
-      font-size: 10px; /* Adjust timestamp font size for smaller screens */
-    }
-  }
+}
 </style>
