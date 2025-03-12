@@ -26,8 +26,8 @@ export default {
   methods: {
     handleLoginSuccess() {
       //TODO： 改成用JWT驗證是否登入
-      const userName = sessionStorage.getItem("userName");
-      if (userName) {
+      const token = sessionStorage.getItem("token");
+      if (token) {
         this.isAuthenticated = true; 
       }
     }
