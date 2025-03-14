@@ -1,5 +1,6 @@
 <template>
   <div>
+    <button @click="logout" class="logoutButton">登出</button>
     <h1>社媒頁面</h1>
     <div>
       <h2><strong>{{ this.userName }}你好！</strong><br>新增你的貼文：</h2>
@@ -228,7 +229,13 @@ export default {
         this.socket.send(JSON.stringify({ username: this.userName, message: this.newMessage }));
         this.newMessage = '';
       }
-    }
+    },
+
+    logout() {
+      sessionStorage.clear();
+      this.$router.push('/');
+      window.location.reload();
+    },
   }
 };
 </script>
@@ -430,5 +437,21 @@ input[type="text"] {
     font-size: 10px;
     /* Adjust timestamp font size for smaller screens */
   }
+}
+
+.logoutButton {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background-color: #dc3545;
+  color: white;
+  border: none;
+  padding: 8px 15px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.logoutButton:hover {
+  background-color: #c82333;
 }
 </style>

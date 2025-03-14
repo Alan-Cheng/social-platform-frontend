@@ -10,6 +10,7 @@
 import LogIn from './components/LogIn.vue';
 import RegisterUser from './components/RegisterUser.vue';
 import SocialMedia from './components/SocialMedia.vue';
+import axios from 'axios';
 
 export default {
   name: 'App',
@@ -23,9 +24,38 @@ export default {
       isAuthenticated: false 
     }
   },
+  created() {
+    this.checkAuth(); // 应用初始化时检查登录状态
+  },
   methods: {
+    async checkAuth() {
+      const token = sessionStorage.getItem("token");
+      if (token) {
+        try {
+          // 使用 JWT 令牌验证用户是否仍然有效
+          const response = await axios.get("http://localhost:8090/api/check-auth", {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+
+          if (response.status === 200) {
+            this.isAuthenticated = true;
+          } else {
+            this.logout();
+          }
+        } catch (error) {
+          console.error("身份验证失败", error);
+          this.logout();
+        }
+      }
+    },
+    logout() {
+      sessionStorage.removeItem("token");
+      sessionStorage.removeItem("userId");
+      sessionStorage.removeItem("userName");
+      this.isAuthenticated = false;
+      this.$router.push("/login"); // 退出后跳转到登录页
+    },
     handleLoginSuccess() {
-      //TODO： 改成用JWT驗證是否登入
       const token = sessionStorage.getItem("token");
       if (token) {
         this.isAuthenticated = true; 

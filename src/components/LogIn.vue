@@ -21,7 +21,8 @@ export default {
     return {
       username: '',
       password: '',
-      loginMessage: '' // 用於顯示登入結果消息
+      loginMessage: '', // 用於顯示登入結果消息
+      backendIp: '',
     }
   },
   methods: {
@@ -39,6 +40,7 @@ export default {
           sessionStorage.setItem('userName', response.data.userName);
           this.loginMessage = '登入成功';
           // 触发登录成功事件
+          this.$router.push({ path: '/SocialMedia' });
           this.$emit('loginSuccess');
         }
       } catch (error) {
