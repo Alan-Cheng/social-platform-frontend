@@ -1,7 +1,8 @@
 <template>
   <div>
     <button @click="logout" class="logoutButton">登出</button>
-    <h1>社媒頁面</h1>
+    <h1>留言板
+    </h1>
     <div>
       <h2><strong>{{ this.userName }}你好！</strong><br>新增你的貼文：</h2>
       <form @submit.prevent="createPost" class="postForm">
@@ -14,12 +15,20 @@
       <h2>所有貼文</h2>
       <div v-for="post in posts" :key="post.postId" class="post">
         <div class="post-content">
-          <p>{{ post.content }}</p>
-          <p><strong>{{ post.userName }}</strong> 建立於: {{ post.createdAt }}</p>
-          <button v-if="post.userId == this.userId" @click="deletePost(post.postId)"
-            class="deleteButton">刪除您的貼文與留言</button>
+          <div v-if="post.isEditing">
+            <textarea v-model="post.editedContent" class="editTextArea"></textarea>
+            <button @click="savePost(post)" class="postButton">儲存變更</button>
+            <button @click="cancelEdit(post)" class="cancelButton">取消</button>
+          </div>
+          <div v-else>
+            <p>{{ post.content }}</p>
+            <p><strong>{{ post.userName }}</strong> 建立於: {{ post.createdAt }}</p>
+            <button v-if="post.userId == this.userId" @click="deletePost(post.postId)"
+              class="deleteButton">刪除貼文</button>
+            <button v-if="post.userId == this.userId" @click="editPost(post)" class="editButton">編輯</button>
+          </div>
           <form @submit.prevent="addComment(post)">
-            <input type="text" v-model="post.newCommentContent" placeholder="輸入留言" required>
+            <input type="text" v-model="post.newCommentContent" placeholder="輸入留言" required class="commentInput">
             <button type="submit" class="commentButton">新增留言</button>
           </form>
           <div v-for="comment in post.comments" :key="comment.commentId" class="comment">
@@ -53,8 +62,6 @@
   </div>
 </template>
 
-
-
 <script>
 import axios from 'axios';
 
@@ -79,45 +86,23 @@ export default {
     this.connectWebSocket();
   },
   methods: {
-    // 通用的發送請求方法
     sendRequest(method, url, data = null) {
       const token = sessionStorage.getItem('token');
       const headers = token ? { Authorization: `Bearer ${token}` } : {};
-
-      const config = {
-        method: method,
-        url: url,
-        headers: headers,
-        data: data,
-      };
-
-      return axios(config)
+      return axios({ method, url, headers, data })
         .then(response => response.data)
-        .catch(error => {
-          console.error(`Error during ${method} request to ${url}:`, error);
-          throw error;
-        });
+        .catch(error => { console.error(`Error during ${method} request to ${url}:`, error); throw error; });
     },
-
-    // 發佈貼文
     createPost() {
       const newPost = {
         content: this.newPostContent,
         userId: this.userId,
-        comments: [],
         createdAt: new Date().toISOString().slice(0, 19).replace('T', ' ')
       };
       this.sendRequest('POST', 'http://localhost:8090/api/posts', newPost)
-        .then(() => {
-          this.fetchPosts();
-          this.newPostContent = '';
-        })
-        .catch(error => {
-          console.error('Error creating post:', error);
-        });
+        .then(() => { this.fetchPosts(); this.newPostContent = ''; })
+        .catch(error => console.error('Error creating post:', error));
     },
-
-    // 新增留言
     addComment(post) {
       const newComment = {
         content: post.newCommentContent,
@@ -126,55 +111,51 @@ export default {
         postId: post.postId
       };
       this.sendRequest('POST', `http://localhost:8090/api/posts/${post.postId}/comments`, newComment)
-        .then(() => {
-          this.fetchPosts();
-          post.newCommentContent = '';
-        })
-        .catch(error => {
-          console.error('Error adding comment:', error);
-        });
+        .then(() => { this.fetchPosts(); post.newCommentContent = ''; })
+        .catch(error => console.error('Error adding comment:', error));
     },
-
-    // 刪除貼文
     deletePost(postId) {
       this.sendRequest('DELETE', `http://localhost:8090/api/posts/${postId}`)
-        .then(() => {
-          this.fetchPosts();
-        })
-        .catch(error => {
-          console.error('Error deleting post:', error);
-        });
+        .then(() => this.fetchPosts())
+        .catch(error => console.error('Error deleting post:', error));
     },
-
-    // 刪除留言
     deleteComment(postId, commentId) {
       this.sendRequest('DELETE', `http://localhost:8090/api/posts/${postId}/comments/${commentId}`)
-        .then(() => {
-          this.fetchPosts();
-        })
-        .catch(error => {
-          console.error('Error deleting comment:', error);
-        });
+        .then(() => this.fetchPosts())
+        .catch(error => console.error('Error deleting comment:', error));
     },
-
-    // 取得所有貼文
     fetchPosts() {
       this.sendRequest('GET', 'http://localhost:8090/api/posts')
         .then(data => {
-          this.posts = data.reverse();
-          this.posts.forEach(post => {
-            post.newCommentContent = '';
-          });
+          this.posts = data.reverse().map(post => ({
+            ...post,
+            newCommentContent: '',
+            isEditing: false,
+            editedContent: post.content
+          }));
         })
-        .catch(error => {
-          console.error('Error fetching posts:', error);
-        });
+        .catch(error => console.error('Error fetching posts:', error));
     },
-
-    toggleChat() {
-      this.isChatCollapsed = !this.isChatCollapsed;
+    editPost(post) {
+      post.isEditing = true;
     },
-
+    cancelEdit(post) {
+      post.isEditing = false;
+      post.editedContent = post.content;
+    },
+    savePost(post) {
+      this.sendRequest('PUT', `http://localhost:8090/api/posts/${post.postId}`, {
+        postId: post.postId,
+        content: post.editedContent,
+        userId: post.userId,
+        createdAt: post.createdAt
+      })
+        .then(() => {
+          post.content = post.editedContent;
+          post.isEditing = false;
+        })
+        .catch(error => console.error('Error updating post:', error));
+    },
     connectWebSocket() {
       const token = sessionStorage.getItem("token");
       const url = `ws://localhost:8090/ws/chat?token=${token}`;
@@ -218,11 +199,15 @@ export default {
           timestamp: new Date().toLocaleTimeString(),
         });
         this.$nextTick(() => {
-          this.$refs.messages.scrollTop = this.$refs.messages.scrollHeight;
+          if (!this.isChatCollapsed) {
+            this.$refs.messages.scrollTop = this.$refs.messages.scrollHeight;
+          }
         });
       };
     },
-
+    toggleChat() {
+      this.isChatCollapsed = !this.isChatCollapsed;
+    },
     sendMessage() {
       if (this.newMessage.trim() && this.socket.readyState === WebSocket.OPEN) {
         console.log(JSON.stringify({ username: this.userName, message: this.newMessage }));
@@ -230,12 +215,11 @@ export default {
         this.newMessage = '';
       }
     },
-
     logout() {
       sessionStorage.clear();
       this.$router.push('/');
       window.location.reload();
-    },
+    }
   }
 };
 </script>
@@ -453,5 +437,67 @@ input[type="text"] {
 
 .logoutButton:hover {
   background-color: #c82333;
+}
+
+.post {
+  width: 80%;
+  margin: 0 auto;
+  border: 2px solid #003366;
+  border-radius: 10px;
+  padding: 20px;
+  margin-bottom: 15px;
+  background-color: #f9f9f9;
+}
+
+.post p {
+  margin: 0;
+  padding: 5px 0;
+  color: #333;
+}
+
+.editButton,
+.saveButton,
+.cancelButton,
+.deleteButton {
+  margin-top: 10px;
+  padding: 5px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.editButton {
+  position: absolute;
+  top: 10px;
+  right: 100px;
+  /* 保持與刪除按鈕不重疊 */
+  background-color: #ffc107;
+  color: black;
+  padding: 6px 12px;
+  /* 更小的內邊距，縮小按鈕 */
+  border: none;
+  border-radius: 20px;
+  /* 使按鈕更圓 */
+  cursor: pointer;
+  font-size: 14px;
+  /* 調整字型大小 */
+}
+
+.editButton:hover {
+  background-color: #e0a800;
+}
+
+.saveButton {
+  background-color: #28a745;
+  color: white;
+}
+
+.cancelButton {
+  background-color: #6c757d;
+  color: white;
+}
+
+.deleteButton {
+  background-color: #dc3545;
+  color: white;
 }
 </style>
